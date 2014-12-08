@@ -14,12 +14,10 @@ from tinkerforge.bricklet_ptc import PTC
 class EthTemperature:
 	HOST = "192.168.3.150"
 	PORT = 4223
-	FILE = "_temperature.txt"
-	PATH = "/home/gus484/public_html/temp/"
 	DB_NAME = "tl"
 	DB_HOST = "127.0.0.1" 
-	DB_USER = "root"
-	DB_PASS = "dnptc484"
+	DB_USER = "DBUSER"
+	DB_PASS = "DBPASS"
 
 	def __init__(self):
 		self.temp 	= None
