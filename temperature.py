@@ -1,25 +1,44 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import mysql.connector
+import ConfigParser
 import datetime
 import time
+import os
 from tinkerforge.ip_connection import IPConnection
 from tinkerforge.bricklet_temperature import Temperature
+from tinkerforge.bricklet_dual_relay import DualRelay
+from tinkerforge.bricklet_ptc import PTC
 
 class EthTemperature:
 	HOST = "192.168.3.150"
 	PORT = 4223
 	FILE = "_temperature.txt"
 	PATH = "/home/gus484/public_html/temp/"
+	DB_NAME = "tl"
+	DB_HOST = "127.0.0.1" 
+	DB_USER = "root"
+	DB_PASS = "dnptc484"
 
 	def __init__(self):
-		self.temp = None
-		self.temp_val = 0
-		self.ipcon = None
-		self.ready = 0
+		self.temp 	= None
+		self.ptc 	= None
+		self.dr 	= None
+		self.relay	= 1
+		
+		self.ipcon 	= None
+		self.ready 	= 0
+		self.config = {}
+		
+		self.cursor = None
+		self.cnx 	= None
 
 		self.now = datetime.datetime.now()
 		self.file = self.now.strftime('%Y-%m-%d')
+		
+		self.connect_db()
+		self.read_config()
 
 		# create ip connection
 		self.ipcon = IPConnection()
@@ -33,44 +52,101 @@ class EthTemperature:
 
 		self.ipcon.connect(EthTemperature.HOST, EthTemperature.PORT)
 
-		self.ipcon.enumerate()
-
 	def release(self):
 		if self.ipcon != None:
 			self.ipcon.disconnect()
-
-	# callback updates temperature displayed on terminal
-	#def cb_temperature(self, temperature):
-	#	print temperature/100.0
-	#	self.temp_val = temperature
-	#	self.write_temperature()
+			
+		if self.cursor != None:
+			self.cursor.close()
+         
+		if self.cnx != None:
+			self.cnx.close()
+			
+	def connect_db(self):
+		self.cnx = mysql.connector.connect(user=EthTemperature.DB_USER, password=EthTemperature.DB_PASS,
+			host=EthTemperature.DB_HOST, database=EthTemperature.DB_NAME)
+			
+		self.cursor = self.cnx.cursor()
+			
+	def read_config(self):
+	
+		if self.cursor == None:
+			return
+		
+		sql = ("SELECT cfg_key, cfg_value FROM tl_config")
+		self.cursor.execute(sql)		
+		
+		for (cfg_key, cfg_value) in self.cursor:
+			self.config[cfg_key] = cfg_value
 
 	def write_temperature(self):
-		if self.temp == None:
+
+		if self.cursor == None:
 			return
 
-		self.temp_val = self.temp.get_temperature()
+		if self.temp == None:
+			temp_inside = 0
+		else:
+			temp_inside = self.temp.get_temperature()
+		if self.ptc == None:
+			temp_outside = 0
+		else:
+			temp_outside = self.ptc.get_temperature()
+
+		sql = ("INSERT INTO tl_measurements "
+               "(measurement_date, temperature) "
+               "VALUES (%(a)s, %(b)s)")
+
+		args = { 'a' : self.now.strftime('%Y-%m-%d %H:%M:%S'), 'b' : temp_inside}
+
+		self.cursor.execute(sql,args)
+
+		# insert new temperature
+
+		mid = self.cursor.lastrowid
+
+		self.cnx.commit()
+	
+	def set_relay(self,state):
+		if self.dr == None or isinstance(state,bool) == False:
+			return
 		
-		f = open(EthTemperature.PATH+self.file+EthTemperature.FILE,"a")
-		f.write(self.now.strftime('%H:%M')+'|')
-		f.write(str(self.temp_val)+"\n")
-		f.close()
+		self.dr.set_selected_state(self.relay, state)
+		
+	def check_temperature(self):
+		
+		if self.ptc == None:
+			return
+		
+		temp_inside = self.ptc.get_temperature()
+		
+		if temp_inside/1000.0  < self.config["min_temp"]:
+			self.set_relay(True)
+		elif temp_inside/1000.0  > self.config["max_temp"]:
+			self.set_relay(False)
 
 	# callback handles device connections and configures possibly lost 
-	# configuration of lcd and temperature callbacks, backlight etc.
 	def cb_enumerate(self, uid, connected_uid, position, hardware_version, 
 				firmware_version, device_identifier, enumeration_type):
 		if enumeration_type == IPConnection.ENUMERATION_TYPE_CONNECTED or enumeration_type == IPConnection.ENUMERATION_TYPE_AVAILABLE:
-            
 			# enumeration is for temperature bricklet
 			if device_identifier == Temperature.DEVICE_IDENTIFIER:
 				# create temperature device object
 				self.temp = Temperature(uid, self.ipcon) 
-				self.ready = 2
-				#self.temp.register_callback(self.temp.CALLBACK_TEMPERATURE, 
-				#	self.cb_temperature)
+				self.ready = self.ready + 1
 
-				#self.temp.set_temperature_callback_period(50)
+			if device_identifier == DualRelay.DEVICE_IDENTIFIER:
+				# create dual relay device object
+				self.dr = DualRelay(uid, self.ipcon)
+				self.ready = self.ready + 1
+				
+			if device_identifier == PTC.DEVICE_IDENTIFIER:
+				# create ptc device object
+				self.ptc = PTC(uid, self.ipcon)
+				
+				self.ptc.set_wire_mode(PTC.WIRE_MODE_3)
+				
+				self.ready = self.ready + 1
 
 	# callback handles reconnection of ip connection
 	def cb_connected(self, connected_reason):
@@ -81,9 +157,11 @@ class EthTemperature:
 
 if __name__ == "__main__":
 	et = EthTemperature()
-	while et.ready == 0:
+
+	while et.ready < 3:
 		time.sleep(0.5)
-	if et.ready == 2:
+	if et.ready == 3:
 		et.write_temperature()
+		#et.check_temperature()
 		et.release()
 
