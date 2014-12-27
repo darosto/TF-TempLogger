@@ -18,12 +18,14 @@ class EthTemperature:
 	DB_HOST = "127.0.0.1" 
 	DB_USER = "DBUSER"
 	DB_PASS = "DBPASS"
+	PTC_OFFSET = 0
+	PTC_OFFSET = 2.7
 
 	def __init__(self):
 		self.temp 	= None
 		self.ptc 	= None
 		self.dr 	= None
-		self.relay	= 1
+		self.relay	= 2
 		
 		self.ipcon 	= None
 		self.ready 	= 0
@@ -76,26 +78,32 @@ class EthTemperature:
 		
 		for (cfg_key, cfg_value) in self.cursor:
 			self.config[cfg_key] = cfg_value
+			
+	def get_temperature(self, sensor):
+		if sensor == "PTC":
+			if self.ptc == None:
+				return 0
+			else:
+				return self.ptc.get_temperature() + EthTemperature.PTC_OFFSET
+		elif sensor == "TB":
+			if self.temp == None:
+				return 0
+			else
+				return self.temp.get_temperature() + + EthTemperature.TB_OFFSET
 
 	def write_temperature(self):
 
 		if self.cursor == None:
 			return
 
-		if self.temp == None:
-			temp_inside = 0
-		else:
-			temp_inside = self.temp.get_temperature()
-		if self.ptc == None:
-			temp_outside = 0
-		else:
-			temp_outside = self.ptc.get_temperature()
+		temp_inside = self.get_temperature("TB")
+		temp_outside = self.get_temperature("PTC")
 
 		sql = ("INSERT INTO tl_measurements "
-               "(measurement_date, temperature) "
-               "VALUES (%(a)s, %(b)s)")
+               "(measurement_date, temperature, temperature_ptc) "
+               "VALUES (%(a)s, %(b)s, %(c)s)")
 
-		args = { 'a' : self.now.strftime('%Y-%m-%d %H:%M:%S'), 'b' : temp_inside}
+		args = { 'a' : self.now.strftime('%Y-%m-%d %H:%M:%S'), 'b' : temp_inside, 'c' : temp_outside}
 
 		self.cursor.execute(sql,args)
 
@@ -116,7 +124,7 @@ class EthTemperature:
 		if self.ptc == None:
 			return
 		
-		temp_inside = self.ptc.get_temperature()
+		temp_inside = self.get_temperature("PTC")
 		
 		if temp_inside/1000.0  < self.config["min_temp"]:
 			self.set_relay(True)
