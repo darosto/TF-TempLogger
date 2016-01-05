@@ -18,8 +18,8 @@ class EthTemperature:
 	DB_HOST = "127.0.0.1" 
 	DB_USER = "DBUSER"
 	DB_PASS = "DBPASS"
-	PTC_OFFSET = 0
-	PTC_OFFSET = 2.7
+	TB_OFFSET = 0 * 100
+	PTC_OFFSET = 2.7 * 100
 
 	def __init__(self):
 		self.temp 	= None
@@ -88,8 +88,8 @@ class EthTemperature:
 		elif sensor == "TB":
 			if self.temp == None:
 				return 0
-			else
-				return self.temp.get_temperature() + + EthTemperature.TB_OFFSET
+			else:
+				return self.temp.get_temperature() + EthTemperature.TB_OFFSET
 
 	def write_temperature(self):
 
@@ -116,7 +116,7 @@ class EthTemperature:
 	def set_relay(self,state):
 		if self.dr == None or isinstance(state,bool) == False:
 			return
-		
+
 		self.dr.set_selected_state(self.relay, state)
 		
 	def check_temperature(self):
@@ -125,10 +125,10 @@ class EthTemperature:
 			return
 		
 		temp_inside = self.get_temperature("PTC")
-		
-		if temp_inside/1000.0  < self.config["min_temp"]:
+
+		if temp_inside/100.0  < float(self.config["min_temp"]):
 			self.set_relay(True)
-		elif temp_inside/1000.0  > self.config["max_temp"]:
+		elif temp_inside/100.0  > float(self.config["max_temp"]):
 			self.set_relay(False)
 
 	# callback handles device connections and configures possibly lost 
@@ -164,10 +164,11 @@ class EthTemperature:
 if __name__ == "__main__":
 	et = EthTemperature()
 
-	while et.ready < 3:
+	while et.ready < 2:
 		time.sleep(0.5)
-	if et.ready == 3:
-		et.write_temperature()
-		#et.check_temperature()
+	if et.ready == 2:
+		if et.now.minute == 0: # log temp every hour
+			et.write_temperature()
+		et.check_temperature()
 		et.release()
 
