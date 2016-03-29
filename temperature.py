@@ -5,7 +5,7 @@ import mysql.connector
 import ConfigParser
 import datetime
 import time
-import os
+import os, sys
 from tinkerforge.ip_connection import IPConnection
 from tinkerforge.bricklet_temperature import Temperature
 from tinkerforge.bricklet_dual_relay import DualRelay
@@ -26,17 +26,17 @@ class EthTemperature:
 		self.ptc 	= None
 		self.dr 	= None
 		self.relay	= 2
-		
+
 		self.ipcon 	= None
 		self.ready 	= 0
 		self.config = {}
-		
+
 		self.cursor = None
 		self.cnx 	= None
 
 		self.now = datetime.datetime.now()
 		self.file = self.now.strftime('%Y-%m-%d')
-		
+
 		self.connect_db()
 		self.read_config()
 
@@ -55,30 +55,29 @@ class EthTemperature:
 	def release(self):
 		if self.ipcon != None:
 			self.ipcon.disconnect()
-			
+
 		if self.cursor != None:
 			self.cursor.close()
-         
+
 		if self.cnx != None:
 			self.cnx.close()
-			
+
 	def connect_db(self):
 		self.cnx = mysql.connector.connect(user=EthTemperature.DB_USER, password=EthTemperature.DB_PASS,
 			host=EthTemperature.DB_HOST, database=EthTemperature.DB_NAME)
-			
+
 		self.cursor = self.cnx.cursor()
-			
+
 	def read_config(self):
-	
 		if self.cursor == None:
 			return
-		
+
 		sql = ("SELECT cfg_key, cfg_value FROM tl_config")
 		self.cursor.execute(sql)		
-		
+
 		for (cfg_key, cfg_value) in self.cursor:
 			self.config[cfg_key] = cfg_value
-			
+
 	def get_temperature(self, sensor):
 		if sensor == "PTC":
 			if self.ptc == None:
@@ -118,12 +117,11 @@ class EthTemperature:
 			return
 
 		self.dr.set_selected_state(self.relay, state)
-		
+
 	def check_temperature(self):
-		
 		if self.ptc == None:
 			return
-		
+
 		temp_inside = self.get_temperature("PTC")
 
 		if temp_inside/100.0  < float(self.config["min_temp"]):
@@ -145,14 +143,21 @@ class EthTemperature:
 				# create dual relay device object
 				self.dr = DualRelay(uid, self.ipcon)
 				self.ready = self.ready + 1
-				
+
 			if device_identifier == PTC.DEVICE_IDENTIFIER:
 				# create ptc device object
 				self.ptc = PTC(uid, self.ipcon)
-				
+
 				self.ptc.set_wire_mode(PTC.WIRE_MODE_3)
-				
+
 				self.ready = self.ready + 1
+
+	# check if all sensors for temperature control connected
+	def is_ready(self, mode):
+		if mode == 'temperature':
+			if self.dr != None && self.ptc != None:
+				return True
+		return False
 
 	# callback handles reconnection of ip connection
 	def cb_connected(self, connected_reason):
@@ -163,10 +168,16 @@ class EthTemperature:
 
 if __name__ == "__main__":
 	et = EthTemperature()
+	i = 0
 
-	while et.ready < 2:
+	# check if sensors connected
+	while et.is_ready('temperature') != True:
 		time.sleep(0.5)
-	if et.ready == 2:
+		if i == 6: # exit programm, if no sensor connection after 3 secs
+			et.release()
+			sys.exit(0)
+
+	if et.is_ready('temperature'):
 		if et.now.minute == 0: # log temp every hour
 			et.write_temperature()
 		et.check_temperature()
