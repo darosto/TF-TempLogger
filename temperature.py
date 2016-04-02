@@ -15,7 +15,7 @@ class EthTemperature:
 	HOST = "192.168.3.150"
 	PORT = 4223
 	DB_NAME = "tl"
-	DB_HOST = "127.0.0.1" 
+	DB_HOST = "127.0.0.1"
 	DB_USER = "DBUSER"
 	DB_PASS = "DBPASS"
 	TB_OFFSET = 0 * 100
@@ -53,13 +53,13 @@ class EthTemperature:
 		self.ipcon.connect(EthTemperature.HOST, EthTemperature.PORT)
 
 	def release(self):
-		if self.ipcon != None:
+		if self.ipcon is not None:
 			self.ipcon.disconnect()
 
-		if self.cursor != None:
+		if self.cursor is not None:
 			self.cursor.close()
 
-		if self.cnx != None:
+		if self.cnx is not None:
 			self.cnx.close()
 
 	def connect_db(self):
@@ -69,30 +69,30 @@ class EthTemperature:
 		self.cursor = self.cnx.cursor()
 
 	def read_config(self):
-		if self.cursor == None:
+		if self.cursor is None:
 			return
 
 		sql = ("SELECT cfg_key, cfg_value FROM tl_config")
-		self.cursor.execute(sql)		
+		self.cursor.execute(sql)
 
 		for (cfg_key, cfg_value) in self.cursor:
 			self.config[cfg_key] = cfg_value
 
 	def get_temperature(self, sensor):
 		if sensor == "PTC":
-			if self.ptc == None:
+			if self.ptc is None:
 				return 0
 			else:
 				return self.ptc.get_temperature() + EthTemperature.PTC_OFFSET
 		elif sensor == "TB":
-			if self.temp == None:
+			if self.temp is None:
 				return 0
 			else:
 				return self.temp.get_temperature() + EthTemperature.TB_OFFSET
 
 	def write_temperature(self):
 
-		if self.cursor == None:
+		if self.cursor is None:
 			return
 
 		temp_inside = self.get_temperature("TB")
@@ -111,15 +111,15 @@ class EthTemperature:
 		mid = self.cursor.lastrowid
 
 		self.cnx.commit()
-	
+
 	def set_relay(self,state):
-		if self.dr == None or isinstance(state,bool) == False:
+		if self.dr is None or isinstance(state,bool) is False:
 			return
 
 		self.dr.set_selected_state(self.relay, state)
 
 	def check_temperature(self):
-		if self.ptc == None:
+		if self.ptc is None:
 			return
 
 		temp_inside = self.get_temperature("PTC")
@@ -129,14 +129,14 @@ class EthTemperature:
 		elif temp_inside/100.0  > float(self.config["max_temp"]):
 			self.set_relay(False)
 
-	# callback handles device connections and configures possibly lost 
-	def cb_enumerate(self, uid, connected_uid, position, hardware_version, 
+	# callback handles device connections and configures possibly lost
+	def cb_enumerate(self, uid, connected_uid, position, hardware_version,
 				firmware_version, device_identifier, enumeration_type):
 		if enumeration_type == IPConnection.ENUMERATION_TYPE_CONNECTED or enumeration_type == IPConnection.ENUMERATION_TYPE_AVAILABLE:
 			# enumeration is for temperature bricklet
 			if device_identifier == Temperature.DEVICE_IDENTIFIER:
 				# create temperature device object
-				self.temp = Temperature(uid, self.ipcon) 
+				self.temp = Temperature(uid, self.ipcon)
 				self.ready = self.ready + 1
 
 			if device_identifier == DualRelay.DEVICE_IDENTIFIER:
@@ -155,7 +155,10 @@ class EthTemperature:
 	# check if all sensors for temperature control connected
 	def is_ready(self, mode):
 		if mode == 'temperature':
-			if self.dr != None && self.ptc != None:
+			if self.dr is not None and self.ptc is not None:
+				return True
+		if mode == 'cistern':
+			if self.rs232 is not None:
 				return True
 		return False
 
