@@ -110,7 +110,10 @@ class EthTemperature:
 		print "Length"+str(us_msg[1])
 		if us_msg[1] > 0 && us_msg[0][0] == 'R':
 			# TODO get distance value
-			print us_msg[0]
+			us_msg[0].remove('R')
+			dist = ''.join(us_msg) # in mm
+			print dist
+		return
 
 	def write_temperature(self):
 
