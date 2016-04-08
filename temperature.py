@@ -10,6 +10,7 @@ from tinkerforge.ip_connection import IPConnection
 from tinkerforge.bricklet_temperature import Temperature
 from tinkerforge.bricklet_dual_relay import DualRelay
 from tinkerforge.bricklet_ptc import PTC
+from tinkerforge.bricklet_rs232 import BrickletRS232
 
 class EthTemperature:
 	HOST = "192.168.3.150"
@@ -24,6 +25,7 @@ class EthTemperature:
 	def __init__(self):
 		self.temp 	= None
 		self.ptc 	= None
+		self.rs232	= None
 		self.dr 	= None
 		self.relay	= 2
 
@@ -50,7 +52,11 @@ class EthTemperature:
 		self.ipcon.register_callback(IPConnection.CALLBACK_CONNECTED,
 						self.cb_connected)
 
-		self.ipcon.connect(EthTemperature.HOST, EthTemperature.PORT)
+		try:
+			self.ipcon.connect(EthTemperature.HOST, EthTemperature.PORT)
+		except:
+			print "Could not connect to tinkerforge"
+			self.ipcon = None
 
 	def release(self):
 		if self.ipcon is not None:
@@ -63,10 +69,15 @@ class EthTemperature:
 			self.cnx.close()
 
 	def connect_db(self):
-		self.cnx = mysql.connector.connect(user=EthTemperature.DB_USER, password=EthTemperature.DB_PASS,
-			host=EthTemperature.DB_HOST, database=EthTemperature.DB_NAME)
+		try:
+			self.cnx = mysql.connector.connect(user=EthTemperature.DB_USER, password=EthTemperature.DB_PASS,
+				host=EthTemperature.DB_HOST, database=EthTemperature.DB_NAME)
 
-		self.cursor = self.cnx.cursor()
+			self.cursor = self.cnx.cursor()
+		except:
+			print "Could not connect to database!"
+			self.cnx = None
+			self.cursor = None
 
 	def read_config(self):
 		if self.cursor is None:
@@ -90,9 +101,23 @@ class EthTemperature:
 			else:
 				return self.temp.get_temperature() + EthTemperature.TB_OFFSET
 
+	def get_cistern_level(self):
+		# check if bricklet connected
+		if self.rs232 == None:
+			return 0
+
+		us_msg = self.rs232.read()
+		print "Length"+str(us_msg[1])
+		if us_msg[1] > 0 and us_msg[0][0] == 'R':
+			# TODO get distance value
+			us_msg[0].remove('R')
+			dist = ''.join(us_msg) # in mm
+			print dist
+		return
+
 	def write_temperature(self):
 
-		if self.cursor is None:
+		if self.cursor == None or self.cnx == None:
 			return
 
 		temp_inside = self.get_temperature("TB")
@@ -151,6 +176,12 @@ class EthTemperature:
 				self.ptc.set_wire_mode(PTC.WIRE_MODE_3)
 
 				self.ready = self.ready + 1
+			if device_identifier == BrickletRS232.DEVICE_IDENTIFIER:
+				# create rs232 device object
+				self.rs232 = BrickletRS232(uid, self.ipcon)
+				# set configuration for ultra sonic sensor
+				self.rs232.set_configuration(BrickletRS232.BAUDRATE_9600, BrickletRS232.PARITY_NONE, BrickletRS232.STOPBITS_1,
+					BrickletRS232.WORDLENGTH_8, BrickletRS232.HARDWARE_FLOWCONTROL_OFF, BrickletRS232.SOFTWARE_FLOWCONTROL_OFF)
 
 	# check if all sensors for temperature control connected
 	def is_ready(self, mode):
