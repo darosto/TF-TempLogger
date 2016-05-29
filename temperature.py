@@ -101,19 +101,44 @@ class EthTemperature:
 			else:
 				return self.temp.get_temperature() + EthTemperature.TB_OFFSET
 
+	def _flushCisternSensor(self):
+		msg_len = 1
+		while msg_len != 0:
+			us_msg = self.rs232.read()
+			msg_len = us_msg[1]
+		time.sleep(0.5)
+		return
+
 	def get_cistern_level(self):
 		# check if bricklet connected
 		if self.rs232 == None:
 			return 0
 
+		dist = 0
+
 		us_msg = self.rs232.read()
-		print "Length"+str(us_msg[1])
-		if us_msg[1] > 0 and us_msg[0][0] == 'R':
-			# TODO get distance value
-			us_msg[0].remove('R')
-			dist = ''.join(us_msg) # in mm
-			print dist
-		return
+
+		if us_msg[1] > 0:
+			# get message
+			us_msg = us_msg[0]
+
+			# search value in message tuple
+			start = None
+			i = 0
+			for c in us_msg:
+				if c == 'R':
+					start = i+1
+				if start is not None and c == '\r':
+					end = i
+					break
+				i = i + 1
+
+			dist = ''.join(us_msg[start:end]) # in mm
+			dist = int(dist)
+
+		return dist
+
+
 
 	def write_temperature(self):
 
@@ -210,10 +235,15 @@ if __name__ == "__main__":
 		if i == 6: # exit programm, if no sensor connection after 3 secs
 			et.release()
 			sys.exit(0)
+		i = i + 1
 
 	if et.is_ready('temperature'):
 		if et.now.minute == 0: # log temp every hour
 			et.write_temperature()
 		et.check_temperature()
-		et.release()
+
+	if et.is_ready('cistern'):
+		print et.get_cistern_level()
+
+	et.release()
 
